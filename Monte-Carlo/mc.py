@@ -84,8 +84,8 @@ def mc_iter(env, gamma=0.99, max_steps=50, num_episodes=10000):
     return policy, Q
 
 
-opt_policy, opt_Q = mc_iter(env)
-print(opt_policy)
+# opt_policy, opt_Q = mc_iter(env)
+# print(opt_policy)
 
 def test_pol(policy, env, num_episodes=500):
     sc = 0
@@ -99,5 +99,71 @@ def test_pol(policy, env, num_episodes=500):
                 sc += 1
     print(sc / num_episodes)
 
-test_pol(opt_policy, env)
+# test_pol(opt_policy, env)
+
+
+def online_mc_estimate(pi, env, gamma=0.99, max_steps=50, num_episodes=5000):
+    Q = np.zeros((env.observation_space.n, env.action_space.n))
+    N = np.zeros((env.observation_space.n, env.action_space.n)) # no of steps a state, action pair is visited
+    for _ in range(num_episodes):
+        trajectory = sample_trajectory(pi, env, max_steps)
+        returns = compute_returns(trajectory, gamma)
+
+        for (state, action), G in returns.items():
+            Q[state, action] = Q[state, action] + (G - Q[state, action]) / (N[state, action] + 1)
+            N[state, action] += 1 
+        
+    return Q
+
+def oneline_mc_iter(env, gamma=0.99, max_steps=50, num_episodes=10000):
+    policy = np.random.choice(env.action_space.n, size=(env.observation_space.n, ))
+    while True:
+        Q = online_mc_estimate(policy, env, gamma, max_steps, num_episodes)
+        new_policy = policy_improvement(Q) 
+
+        if np.array_equal(new_policy, policy):
+            break
+        policy = new_policy
+    return policy, Q
+
+
+# opt_p, opt_q = oneline_mc_iter(env) 
+# print(opt_p)
+# test_pol(opt_p, env)
+
+
+def lr_scheduler(start_val, min_val, decay_factor, num_episodes):
+    alphas = [start_val * decay_factor**episode for episode in range(num_episodes)]
+    alphas = [a if a >= min_val else min_val for a in alphas]
+    return alphas
+
+alphas = lr_scheduler(1.0, 0.01, 0.99, 5000)
+
+def online_mc_estimate_w_lr(pi, env, gamma=0.99, max_steps=50, num_episodes=5000, lr_start_val=0.8, lr_min_val=0.01, lr_decay_factor=0.99):
+    Q = np.zeros((env.observation_space.n, env.action_space.n))
+    alphas = lr_scheduler(lr_start_val, lr_min_val, lr_decay_factor, num_episodes)
+    for i in range(num_episodes):
+        trajectory = sample_trajectory(pi, env, max_steps)
+        returns = compute_returns(trajectory, gamma)
+
+        for (state, action), G in returns.items():
+            Q[state, action] = Q[state, action] + alphas[i] * (G - Q[state, action])
+        
+    return Q
+
+def oneline_mc_iter_w_lr(env, gamma=0.99, max_steps=50, num_episodes=10000):
+    policy = np.random.choice(env.action_space.n, size=(env.observation_space.n, ))
+    while True:
+        Q = online_mc_estimate_w_lr(policy, env, gamma, max_steps, num_episodes)
+        new_policy = policy_improvement(Q) 
+
+        if np.array_equal(new_policy, policy):
+            break
+        policy = new_policy
+    return policy, Q
+
+opt_p, opt_q = oneline_mc_iter(env)
+print("online monte carlo with lr")
+print(opt_p)
+test_pol(opt_p, env)
 
